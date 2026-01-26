@@ -24,4 +24,4 @@ Clent side:
 `./ofi_atomic -p "udp;ofi_rxd" -i 100 -v -h 127.0.0.1`
 
 ## Notes
-Tested on psm3, verbs providers, but have issues on "udp;ofi_rxd" and "tcp;ofi_rxm"
+Tested on psm3, verbs providers, but have issues on "udp;ofi_rxd"
