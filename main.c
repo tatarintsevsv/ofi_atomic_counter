@@ -40,6 +40,8 @@ fi_addr_t fi_addr[1] = {0};
 uint64_t remote_addr = 0;
 uint64_t remote_key = 0;
 uint64_t remote_desc = 0;
+void *result_desc = NULL;
+struct fid_mr *result_mr = NULL;
 
 uint64_t value_to_add = 1;
 uint64_t result;              // old value of atomic
@@ -59,6 +61,10 @@ bool verbose = false;
 static void
 close_ofi_resources(void)
 {
+	if (mr)
+		fi_close(&mr->fid);
+	if (result_mr)
+		fi_close(&result_mr->fid);
 	if (av)
 		fi_close(&av->fid);
 	if (cq)
@@ -150,6 +156,7 @@ ofi_init_resources(void)
 
 	/* register memory region */
 	eval(fi_mr_reg(domain, my_atomic_value, sizeof(uint64_t), FI_REMOTE_READ|FI_REMOTE_WRITE|FI_SEND|FI_RECV, 0, 0, 0, &mr, NULL));
+	eval(fi_mr_reg(domain, &result, sizeof(uint64_t), FI_REMOTE_READ|FI_REMOTE_WRITE|FI_SEND|FI_RECV, 0, 1, 0, &result_mr, NULL));
 
 	/* create EP */
 	eval(fi_endpoint(domain, info, &ep, NULL));
@@ -295,7 +302,7 @@ atomic_fetch(void)
 					1,
 					fi_mr_desc(mr),
 					&result,
-					(void *)remote_desc,
+					fi_mr_desc(result_mr),
 					fi_addr[0],
 					remote_addr,
 					remote_key,
