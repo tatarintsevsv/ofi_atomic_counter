@@ -286,7 +286,11 @@ atomic_fetch(void)
 {
 	ssize_t res;
 	struct fi_cq_data_entry comp;
+	struct timespec t_begin;
+	struct timespec t_now;
+	double elapsed;
 
+	clock_gettime(CLOCK_MONOTONIC, &t_begin);
 	do
 	{
 		/*
@@ -309,7 +313,24 @@ atomic_fetch(void)
 					FI_UINT64,
 					FI_SUM,
 					NULL);
+		if (res == -FI_EAGAIN)
+		{
+			fi_cq_read(cq, &comp, 0);
+			clock_gettime(CLOCK_MONOTONIC, &t_now);
+			elapsed = (double)timespec_delta(t_begin, t_now)/NS_PER_SECOND;
+			if (elapsed > 1)
+			{
+				fprintf(stderr, "atomic_fetch interrupted due to timeout\n");
+				return -1;
+			}
+		}
 	} while (res == -FI_EAGAIN);
+
+	if (res != 0)
+	{
+		fprintf(stderr,"fi_fetch_atomic returns error: %s (%i)\n", fi_strerror(res), (int)res);
+		return -1;
+	}
 
 	/* wait for completion */
 	res = fi_cq_read(cq, &comp, 1);
@@ -426,6 +447,8 @@ void *listener_thread(void* arg)
 	int server_fd = socket(AF_INET, SOCK_STREAM, 0);
 	struct sockaddr_in address = {AF_INET, htons(PORT), INADDR_ANY};
 
+	pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
+
 	setsockopt(server_fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int));
 	if (verbose)
 		printf("listener thread started\n");
@@ -455,7 +478,6 @@ void *listener_thread(void* arg)
 		}
 		ofi_init_worker(client_fd, false);
 		close(client_fd);
-
 	}
 	return NULL;
 }
@@ -512,6 +534,10 @@ int main(int argc, char *argv[])
 		pthread_create(&th_listener, NULL, listener_thread, NULL);
 		pthread_create(&th_server, NULL, server_thread, NULL);
 		pthread_join(th_server, NULL);
+		pthread_cancel(th_listener);
+		if (server_fd != -1)
+			close(server_fd);
+		close_ofi_resources();
 	}
 	else
 	{
